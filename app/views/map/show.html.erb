@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8' />
+  <title>Display buildings in 3D</title>
+  <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+  <script src='https://api.tiles.mapbox.com/mapbox-gl-js/v0.51.0/mapbox-gl.js'></script>
+  <link href='https://api.tiles.mapbox.com/mapbox-gl-js/v0.51.0/mapbox-gl.css' rel='stylesheet' />
+  <style>
+    body { margin:0; padding:0; }
+    #map { position:absolute; top:0; bottom:0; width:100%; }
+  </style>
+</head>
+<body>
+<style>
+  #fit {
+    display: block;
+    position: relative;
+    margin: 0px auto;
+    width: 50%;
+    height: 40px;
+    padding: 10px;
+    border: none;
+    border-radius: 3px;
+    font-size: 12px;
+    text-align: center;
+    color: #fff;
+    background: #ee8a65;
+  }
+</style>
+<div id='map'></div>
+<br/>
+<button id='fit'>Center Bratislava</button>
+<script>
+    var geojson= <%= raw @geojson.to_s.gsub('=>',':')%>;
+    console.log('data');
+    //console.log(geojson);
+
+    //17.022887,48.09184,17.188025,48.207057
+    //
+    //westlimit=-74.038036; southlimit=40.722968; eastlimit=-73.919713; northlimit=40.850754
+    document.getElementById('fit').addEventListener('click', function() {
+        map.fitBounds([[
+            -74.038036, // w
+            40.722968 // s
+        ], [
+            -73.919713, //e
+            40.850754 // n
+        ]]);
+    });
+
+    mapboxgl.accessToken = 'pk.eyJ1IjoibWFyZWs1NiIsImEiOiJjanA3MXo0eWkxa3NuM3BydzhybWJuanZzIn0.hbrRZcfU8AziT6sPb-udrA';
+    var map = new mapboxgl.Map({
+        style: 'mapbox://styles/mapbox/light-v9',
+        center: [-73.985130, 40.758896],
+        zoom: 15.5,
+        pitch: 45,
+        bearing: -17.6,
+        container: 'map'
+    });
+
+    // The 'building' layer in the mapbox-streets vector source contains building-height
+    // data from OpenStreetMap.
+    map.on('load', function() {
+        // Insert the layer beneath any symbol layer.
+        var layers = map.getStyle().layers;
+
+        var labelLayerId;
+        for (var i = 0; i < layers.length; i++) {
+            if (layers[i].type === 'symbol' && layers[i].layout['text-field']) {
+                labelLayerId = layers[i].id;
+                break;
+            }
+        }
+
+        map.addSource('b_heat_src', { type: 'geojson', data: geojson });
+        map.addLayer({
+            'id': 'b_heat',
+            'type': 'fill',
+            'source': 'b_heat_src',
+            'paint':{
+                'fill-color': {
+                    "property": "height",
+                    "stops": [
+                        [0, '#431566'],
+                        [30, '#e44827'],
+                        [200, '#fffc00']
+                    ]
+                },
+                //'fill-color': "#ffa220",
+                'fill-opacity': 0.8
+            }
+        });
+
+        // When a click event occurs on a feature in the states layer, open a popup at the
+        // location of the click, with description HTML from its properties.
+        map.on('click', 'b_heat', function (e) {
+            new mapboxgl.Popup()
+                .setLngLat(e.lngLat)
+                .setHTML(JSON.stringify(e.features[0].properties))
+                .addTo(map);
+        });
+
+        // Change the cursor to a pointer when the mouse is over the states layer.
+        map.on('mouseenter', 'states-layer', function () {
+            map.getCanvas().style.cursor = 'pointer';
+        });
+
+        // Change it back to a pointer when it leaves.
+        map.on('mouseleave', 'states-layer', function () {
+            map.getCanvas().style.cursor = '';
+        });
+    });
+</script>
+
+</body>
+</html>
