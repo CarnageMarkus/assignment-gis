@@ -2,10 +2,10 @@
 <html>
 <head>
   <meta charset='utf-8' />
-  <title>Display buildings in 3D</title>
+  <title>City Analyzer</title>
   <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
-  <script src='https://api.tiles.mapbox.com/mapbox-gl-js/v0.51.0/mapbox-gl.js'></script>
-  <link href='https://api.tiles.mapbox.com/mapbox-gl-js/v0.51.0/mapbox-gl.css' rel='stylesheet' />
+
+
   <style>
     body { margin:0; padding:0; }
     #map { position:absolute; top:0; bottom:0; width:100%; }
@@ -13,33 +13,144 @@
 </head>
 <body>
 <style>
-  #fit {
-    display: block;
-    position: relative;
-    margin: 0px auto;
-    width: 50%;
-    height: 40px;
+  .map-overlay {
+    position: absolute;
+    width: 220px;
+    top: 0;
+    left: 0;
     padding: 10px;
-    border: none;
-    border-radius: 3px;
-    font-size: 12px;
-    text-align: center;
-    color: #fff;
-    background: #ee8a65;
   }
+
+  .map-overlay .map-overlay-inner {
+    display: block;
+    padding: 10px;
+    margin-bottom: 10px;
+  }
+
+  .needs-selection {}
+  .needs-amenity {}
+
 </style>
 <div id='map'></div>
-<br/>
-<button id='fit'>Center Bratislava</button>
-<script>
-    var geojson= <%= raw @geojson.to_s.gsub('=>',':')%>;
-    console.log('data');
-    //console.log(geojson);
+<div class="map-overlay top">
+  <div class="card">
+    <div class="card-body">
+      <h5 class="card-title">Daylight viz.</h5>
+      <h6 class="card-subtitle mb-2 text-muted">Heatmap mode</h6>
+      <div class="clearfix">
+        <div class="btn-group float-right">
+          <input type="hidden" name="option" value="" id="heatmap_toggle_input" />
+          <div class="btn-group" data-toggle="buttons-radio">
+            <button id="heatmap_toggle_3d" type="button" data-toggle="button" name="option" value="1" class="btn btn-primary focus btn-sm">3D</button>
+            <button id="heatmap_toggle_2d" type="button" data-toggle="button" name="option" value="2" class="btn btn-primary btn-sm">2D</button>
+            <button id="heatmap_toggle_off" type="button" data-toggle="button" name="option" value="2" class="btn btn-primary btn-sm">Off</button>
+          </div>
+        </div>
+      </div>
+      <h6 class="card-subtitle mb-2 mt-1 text-muted">Building</h6>
+      <div class="clearfix">
+        <button id='center_to_popup_btn' type="button" class="btn btn-outline-primary needs-selection btn-sm float-right" disabled>
+          <i class="material-icons mr-1">zoom_in</i>
+          FOCUS
+        </button>
+        <button id="daylightButton" type="button" class="btn btn-outline-primary needs-selection btn-sm float-right" disabled>
+          <i class="material-icons mr-1">wb_sunny</i>
+          SHOW DAYLIGHT
+        </button>
+      </div>
 
-    //17.022887,48.09184,17.188025,48.207057
-    //
-    //westlimit=-74.038036; southlimit=40.722968; eastlimit=-73.919713; northlimit=40.850754
-    document.getElementById('fit').addEventListener('click', function() {
+      <h6 class="card-subtitle mb-2 mt-1 text-muted">Search</h6>
+      <div class="clearfix">
+        <select id="amenitySelect" class="form-control form-control-sm needs-selection" disabled>
+         <option>Select amenity</option>
+        </select>
+        <br>
+        <label for="searchRange">Search range:</label><label class="mx-1" id="rangeText">5500</label><label>m</label><br>
+        <input type="range" class="custom-range needs-selection" min="500" max="10000" step="500" id="searchRange"
+               oninput="sliderChange(this.value)" onchange="sliderChange(this.value)">
+        <br>
+        <button id='amenitySearch' type="button" class="btn btn-outline-primary needs-amenity btn-sm float-right" disabled>
+          <i class="material-icons mr-2">search</i>
+          SEARCH
+        </button>
+        <br>
+      </div>
+
+      <h6 class="card-subtitle mb-2 mt-1 text-muted">Other</h6>
+      <button id='force_update' type="button" class="btn btn-outline-warning btn-sm float-right">
+        <i class="material-icons mr-2">refresh</i>
+        FORCE UPDATE
+      </button>
+      <button id='canter_map_btn' type="button" class="btn btn-outline-warning btn-sm float-right">
+        <i class="material-icons mr-2">zoom_out_map</i>
+        MANHATTAN
+      </button>
+    </div>
+  </div>
+</div>
+<script>
+    // load defaults
+    var buildings_geojson = <%= raw @building_geojson.to_s.gsub('=>',':')%>;
+    var buildings_centroids = <%= raw @building_centroids.to_s.gsub('=>',':') %>;
+    var amenities = <%= raw @amenity.to_json %>;
+    var camLng = <%= raw @camera_lng %>;
+    var camLat = <%= raw @camera_lat %>;
+    var camZoom = <%= raw @camera_zoom %>;
+    var camPitch = <%= raw @camera_pitch %>;
+    var camBearing = <%= raw @camera_bearing %>;
+
+    //selection
+    var selected = 1;
+    var selected2 = 0;
+    var selectedFeature = null;
+    var selectedFeaturePos = null;
+
+    var displayMode = 0;  // 0 = 3D
+                          // 1 = 2D
+                          // 2 = Off
+
+    var displayDaylightEnabled = false;
+
+    // daylight visualization
+    document.getElementById('daylightButton').addEventListener('click', function() {
+        if (selectedFeature && selectedFeaturePos)
+        {
+            $.ajax({
+                url: "/map/test_sun_occlusion",
+                dataType: "json",
+                data: {lng: selectedFeaturePos.lng, lat: selectedFeaturePos.lat},
+                success: function (data) {
+                    map.getSource('b_daylight_src').setData(data.daylight_geo);
+                    var buildings = JSON.parse(data.buildings);
+                    var selected_building = turf.point([selectedFeaturePos.lng,selectedFeaturePos.lat]);
+
+                    for (var i = 0; i < buildings.features.length; i++) {
+                        var id = buildings.features[i].properties.id;
+
+                        var target_building = selected_building;
+
+                        if (buildings_centroids[id])
+                            target_building = turf.point([buildings_centroids[id][0],buildings_centroids[id][1]]);
+
+                        var buildings_distance = turf.distance(selected_building,target_building);
+
+                        buildings.features[i].properties['difference'] = (
+                            ( (selectedFeature.properties.height + 1) / (buildings.features[i].properties.height + 1) )
+                            + (buildings_distance * 2) );
+                    }
+                    map.getSource('b_intersect_src').setData(buildings);
+                    showDaylight();
+                },
+                error: function (data) {
+                    console.log('update error');
+                    console.log(data.responseText);
+                }
+            });
+        }
+    });
+
+    // center map
+    document.getElementById('canter_map_btn').addEventListener('click', function() {
         map.fitBounds([[
             -74.038036, // w
             40.722968 // s
@@ -49,14 +160,198 @@
         ]]);
     });
 
+    // ceneter to popup
+    document.getElementById('center_to_popup_btn').addEventListener('click', function() {
+        if (selectedFeature)
+        {
+            var coordinates = selectedFeature.geometry.coordinates;
+
+            var bounds = new mapboxgl.LngLatBounds();
+            coordinates.forEach(function(set) {
+                set.forEach(function (point) {
+                    bounds.extend(point);
+                });
+            });
+
+            map.fitBounds(bounds, {
+                padding: (selectedFeature.properties.height * 2) ,
+                pitch: 40,
+                bearing: -17.6,
+            });
+        }
+    });
+
+    function capitalizeFirstLetter(string) {
+        return string.charAt(0).toUpperCase() + string.slice(1);
+    }
+
+    // amenity select
+    var amenitySelect = document.getElementById('amenitySelect');
+    for (var i = 0; i < amenities.length; i++) {
+        let option = document.createElement("option");
+        option.text = capitalizeFirstLetter(amenities[i].toString().replace(/_/g, ' '));
+        option.value = amenities[i];
+        amenitySelect.add(option);
+    }
+
+    function updateNeedsAmenity() {
+        if (amenitySelect.selectedIndex > 0)
+        {
+            $('.needs-amenity').prop('disabled', false);
+        } else {
+            $('.needs-amenity').prop('disabled', true);
+        }
+    }
+
+    amenitySelect.addEventListener("change", updateNeedsAmenity );
+
+    var rangeText = document.getElementById("rangeText");
+    function sliderChange(newVal){
+        rangeText.innerHTML=newVal;
+    }
+
+    var rangeSlider = document.getElementById("searchRange");
+
     mapboxgl.accessToken = 'pk.eyJ1IjoibWFyZWs1NiIsImEiOiJjanA3MXo0eWkxa3NuM3BydzhybWJuanZzIn0.hbrRZcfU8AziT6sPb-udrA';
     var map = new mapboxgl.Map({
         style: 'mapbox://styles/mapbox/light-v9',
-        center: [-73.985130, 40.758896],
-        zoom: 15.5,
-        pitch: 45,
-        bearing: -17.6,
+        center: [camLng, camLat],
+        zoom: camZoom,
+        pitch: camPitch,
+        bearing: camBearing,
         container: 'map'
+    });
+
+    function updateDaylightLayer() {
+        if (displayDaylightEnabled) {
+            if (displayMode == 0)
+            {
+                map.setLayoutProperty('b_daylight', 'visibility', 'visible');
+                map.setLayoutProperty('b_intersect', 'visibility', 'none');
+                map.setLayoutProperty('b_intersect_3d', 'visibility', 'visible');
+            } else {
+                map.setLayoutProperty('b_daylight', 'visibility', 'visible');
+                map.setLayoutProperty('b_intersect', 'visibility', 'visible');
+                map.setLayoutProperty('b_intersect_3d', 'visibility', 'none');
+            }
+        } else {
+            map.setLayoutProperty('b_daylight', 'visibility', 'none');
+            map.setLayoutProperty('b_intersect', 'visibility', 'none');
+            map.setLayoutProperty('b_intersect_3d', 'visibility', 'none');
+        }
+    }
+
+    function showDaylight() {
+        displayDaylightEnabled = true;
+        updateDaylightLayer(true);
+    }
+
+    function hideDaylight() {
+        displayDaylightEnabled = false;
+        updateDaylightLayer(false);
+    }
+
+    function updateSelectionLayer() {
+        if (selectedFeature) {
+            if (displayMode == 0) {
+                map.setLayoutProperty('b_select', 'visibility', 'none');
+                map.setLayoutProperty('b_select_3d', 'visibility', 'visible');
+            } else {
+                map.setLayoutProperty('b_select', 'visibility', 'visible');
+                map.setLayoutProperty('b_select_3d', 'visibility', 'none');
+            }
+            return;
+        }
+        map.setLayoutProperty('b_select', 'visibility', 'none');
+        map.setLayoutProperty('b_select_3d', 'visibility', 'none');
+    }
+
+    function updateHeatMapLayer(mode) {
+        displayMode = mode;
+        switch (displayMode) {
+            case 0:
+                map.setLayoutProperty('b_heat', 'visibility', 'none');
+                map.setLayoutProperty('b_heat_3d', 'visibility', 'visible');
+                map.setLayoutProperty('b_buildings', 'visibility', 'none');
+                break;
+            case 1:
+                map.setLayoutProperty('b_heat', 'visibility', 'visible');
+                map.setLayoutProperty('b_heat_3d', 'visibility', 'none');
+                map.setLayoutProperty('b_buildings', 'visibility', 'none');
+                break;
+            case 2:
+                map.setLayoutProperty('b_heat', 'visibility', 'none');
+                map.setLayoutProperty('b_heat_3d', 'visibility', 'none');
+                map.setLayoutProperty('b_buildings', 'visibility', 'visible');
+                break;
+        }
+        updateSelectionLayer();
+        updateDaylightLayer();
+    }
+
+    // toggle layers - 3d
+    document.getElementById('heatmap_toggle_3d').addEventListener('click', function() { updateHeatMapLayer(0) });
+
+    // toggle layers - 2d
+    document.getElementById('heatmap_toggle_2d').addEventListener('click', function() { updateHeatMapLayer(1) });
+
+    // toggle layers - off
+    document.getElementById('heatmap_toggle_off').addEventListener('click', function() { updateHeatMapLayer(2) });
+
+    var mapMarkers = [];
+
+    function markersClear() {
+        while (mapMarkers.length) {
+            let oldmarker = mapMarkers.pop();
+            oldmarker.remove();
+        }
+    }
+
+    var popup = new mapboxgl.Popup()
+        .setHTML("<h1>Hello World!</h1>");
+
+    document.getElementById('amenitySearch').addEventListener('click', function() {
+        if (selectedFeature && selectedFeaturePos)
+        {
+            $.ajax({
+                url: "/map/amenity_search",
+                dataType: "json",
+                data: {lng: selectedFeaturePos.lng, lat: selectedFeaturePos.lat, dist: rangeSlider.value, amenity: amenitySelect.value },
+                success: function (data) {
+                    console.log(data);
+                    if (data && data.features) {
+                        markersClear();
+                        if (data.features.length > 0) {
+                            var bounds = new mapboxgl.LngLatBounds();
+                            bounds.extend(selectedFeaturePos);
+                            for (let i = 0; i < data.features.length; i++) {
+                                let id = data.features[i].properties.id;
+                                if (buildings_centroids[id]) {
+                                    let pos = new mapboxgl.LngLat(buildings_centroids[id][0], buildings_centroids[id][1]);
+                                    let marker = new mapboxgl.Marker()
+                                        .setLngLat(pos)
+                                        .addTo(map);
+
+                                    mapMarkers.push(marker);
+
+                                    bounds.extend(pos);
+                                }
+                            }
+
+                            map.fitBounds(bounds, {
+                                padding: 100,
+                                maxZoom: 18,
+                            });
+                        }
+
+                    }
+                },
+                error: function (data) {
+                    console.log('update error');
+                    console.log(data.responseText);
+                }
+            });
+        }
     });
 
     // The 'building' layer in the mapbox-streets vector source contains building-height
@@ -73,43 +368,287 @@
             }
         }
 
-        map.addSource('b_heat_src', { type: 'geojson', data: geojson });
+        map.addSource('b_heat_src', { type: 'geojson', data: buildings_geojson });
+        map.addSource('b_intersect_src', { type: 'geojson', data: null });
+        map.addSource('b_daylight_src', { type: 'geojson', data: null });
+        map.addSource('b_select_src', { type: 'geojson', data: null });
+
+        map.addLayer({
+            'id': 'b_daylight',
+            'type': 'fill',
+            'source': 'b_daylight_src',
+            'layout': {
+                'visibility': 'visible'
+            },
+            'paint':{
+                'fill-color': '#ffa737',
+                'fill-outline-color': '#ff5735',
+                'fill-opacity': 0.5
+            }
+        },labelLayerId);
+
+        map.addLayer({
+            'id': 'b_select',
+            'type': 'fill',
+            'source': 'b_select_src',
+            'layout': {
+                'visibility': 'none'
+            },
+            'paint':{
+                'fill-color': '#9b23ff',
+                'fill-opacity': 1.0
+            },
+        },labelLayerId);
+        map.addLayer({
+            'id': 'b_select_3d',
+            'type': 'fill-extrusion',
+            'source': 'b_select_src',
+            'layout': {
+                'visibility': 'none'
+            },
+            'paint':{
+                'fill-extrusion-color': '#9b23ff',
+                'fill-extrusion-height': ['get', 'height'],
+                'fill-extrusion-base': ['get', 'min_height'],
+                'fill-extrusion-opacity': 1.0
+            },
+        });
+
+        map.addLayer({
+            'id': 'b_intersect',
+            'type': 'fill',
+            'source': 'b_intersect_src',
+            'layout': {
+                'visibility': 'none'
+            },
+            'paint':{
+                'fill-color':[
+                    'interpolate', ['linear'], ['get', 'difference'],
+                    0, '#993404',
+                    1, '#d95f0e',
+                    2, '#fe9929',
+                    3, '#fefe8b',
+                    999, '#d7ffb5'
+                ],
+                'fill-opacity': 1.0
+            }
+        },'b_select');
+        map.addLayer({
+            'id': 'b_intersect_3d',
+            'type': 'fill-extrusion',
+            'source': 'b_intersect_src',
+            'layout': {
+                'visibility': 'none'
+            },
+            'paint':{
+                'fill-extrusion-color':[
+                    'interpolate', ['linear'], ['get', 'difference'],
+                    0, '#993404',
+                    1, '#d95f0e',
+                    2, '#fe9929',
+                    3, '#fefe8b',
+                    999, '#d7ffb5'
+                ],
+                'fill-extrusion-height': ['get', 'height'],
+                'fill-extrusion-base': ['get', 'min_height'],
+                'fill-extrusion-opacity': 1.0
+            }
+        },'b_select_3d');
+
         map.addLayer({
             'id': 'b_heat',
             'type': 'fill',
             'source': 'b_heat_src',
+            'layout': {
+                'visibility': 'none'
+            },
             'paint':{
                 'fill-color': {
                     "property": "height",
                     "stops": [
-                        [0, '#431566'],
-                        [30, '#e44827'],
-                        [200, '#fffc00']
+                        [0, '#212121'],
+                        [1, '#f0f9e8'],
+                        [25, '#bae4bc'],
+                        [75, '#7bccc4'],
+                        [150, '#43a2ca'],
+                        [999, '#0868ac']
                     ]
                 },
-                //'fill-color': "#ffa220",
                 'fill-opacity': 0.8
+            }
+        },'b_intersect');
+        map.addLayer({
+            'id': 'b_heat_3d',
+            'type': 'fill-extrusion',
+            'source': 'b_heat_src',
+            'layout': {
+                'visibility': 'visible'
+            },
+            'paint':{
+                'fill-extrusion-color': {
+                    "property": "height",
+                    "stops": [
+                        [0, '#212121'],
+                        [1, '#f0f9e8'],
+                        [25, '#bae4bc'],
+                        [75, '#7bccc4'],
+                        [150, '#43a2ca'],
+                        [999, '#0868ac']
+                    ]
+                },
+                'fill-extrusion-height': ['get', 'height'],
+                'fill-extrusion-base': ['get', 'min_height'],
+                'fill-extrusion-opacity': 0.8
+            }
+        },'b_intersect_3d');
+
+        map.addLayer({
+            'id': 'b_buildings',
+            'type': 'fill',
+            'source': 'b_heat_src',
+            'layout': {
+                'visibility': 'none'
+            },
+            'paint':{
+                'fill-color': '#ccab66',
+                'fill-opacity': 0.5
+            }
+        },'b_heat');
+
+        function selectBuildingFeature(event) {
+            selectedFeature = event.features[0];
+            var id = selectedFeature.properties.id;
+            selectedFeaturePos = event.lngLat;
+            if (buildings_centroids[id])
+                selectedFeaturePos = new mapboxgl.LngLat(buildings_centroids[id][0], buildings_centroids[id][1]);
+
+            map.getSource('b_select_src').setData(selectedFeature.toJSON());
+            updateSelectionLayer();
+
+            $('.needs-selection').prop('disabled', false);
+            updateNeedsAmenity();
+        }
+
+        function deselectBuildingFeature() {
+            selectedFeature = null;
+            selectedFeaturePos = null;
+            console.log("deselect");
+            hideDaylight();
+            updateSelectionLayer();
+
+
+        }
+
+        function buildingFeatureClick(e) {
+            selected++;
+            selected2 = selected + 1;
+
+            if (selectedFeature == e.features[0])
+                return;
+            // click on different feature - deselect first
+            if (selectedFeature != null)
+                deselectBuildingFeature();
+
+            selectBuildingFeature(e);
+
+            content = '<div><p><strong>building id:</strong> '+ selectedFeature.properties.id + '</p>' +
+                '<p><strong>amenity:</strong> '+ selectedFeature.properties.amenity + '</p>' +
+                '<p><strong>height:</strong> '+ selectedFeature.properties.height + '</p>' +
+                '<p><strong>min_height:</strong> '+ selectedFeature.properties.min_height + '</p></div>';
+
+            new mapboxgl.Popup()
+                .setLngLat(selectedFeaturePos)
+                .setHTML(content)
+                .addTo(map);
+        }
+
+        map.on('click', 'b_heat', buildingFeatureClick );
+        map.on('click', 'b_heat_3d', buildingFeatureClick );
+        map.on('click', 'b_buildings', buildingFeatureClick );
+
+        map.on('click', function (e) {
+            selected2--;
+            // click deselect
+            if (selectedFeature && selected !== selected2) {
+                deselectBuildingFeature();
+                $('.needs-selection').prop('disabled', true);
+                $('.needs-amenity').prop('disabled', true);
             }
         });
 
-        // When a click event occurs on a feature in the states layer, open a popup at the
-        // location of the click, with description HTML from its properties.
-        map.on('click', 'b_heat', function (e) {
-            new mapboxgl.Popup()
-                .setLngLat(e.lngLat)
-                .setHTML(JSON.stringify(e.features[0].properties))
-                .addTo(map);
-        });
-
         // Change the cursor to a pointer when the mouse is over the states layer.
-        map.on('mouseenter', 'states-layer', function () {
+        map.on('mouseenter', 'b_heat', function () {
             map.getCanvas().style.cursor = 'pointer';
         });
 
         // Change it back to a pointer when it leaves.
-        map.on('mouseleave', 'states-layer', function () {
+        map.on('mouseleave', 'b_heat', function () {
             map.getCanvas().style.cursor = '';
         });
+
+        var currentBoundsSW = map.getBounds().getSouthWest();
+        var currentBoundsNE = map.getBounds().getNorthEast();
+
+        var heatMapUpdating = false;
+        function UpdateHeatMap() {
+            if (heatMapUpdating)
+            {
+                console.log("already updating...wait")
+                return;
+            }
+            var bounds = map.getBounds();
+            var boundsSW = bounds.getSouthWest();
+            var boundsNE = bounds.getNorthEast();
+            if (boundsSW.lng < currentBoundsSW.lng
+                || boundsSW.lat < currentBoundsSW.lat
+                || boundsNE.lng > currentBoundsNE.lng
+                || boundsNE.lat > currentBoundsNE.lat)
+            {
+                console.log("start update")
+                heatMapUpdating = true;
+
+                currentBoundsSW = boundsSW;
+                currentBoundsNE = boundsNE;
+
+                var turfSW = turf.point([boundsSW.lng,boundsSW.lat]);
+                var turfNE = turf.point([boundsNE.lng,boundsNE.lat]);
+                var visible_distance = turf.distance(turfSW,turfNE);
+                //console.log(visible_distance);
+                var center = map.getCenter();
+                $.ajax({
+                    url: "/map/heatmap_camera_update",
+                    dataType: "json",
+                    data: {lng: center.lng, lat: center.lat, dist: visible_distance},
+                    success: function (data) {
+                        map.getSource('b_heat_src').setData(data);
+                        heatMapUpdating = false;
+                        console.log('updated');
+                    },
+                    error: function (data) {
+                        console.log('update error');
+                        console.log(data.responseText);
+                        heatMapUpdating = false;
+                    }
+                });
+            }
+        }
+
+        function ForceUpdateHeatMap() {
+            currentBoundsSW = new mapboxgl.LngLat(0, 0);
+            currentBoundsNE = new mapboxgl.LngLat(0, 0);
+            heatMapUpdating = false;
+            UpdateHeatMap();
+        }
+
+        var timer = window.setInterval(function() {
+            if (displayMode != 2)
+                UpdateHeatMap();
+        }, 1000);
+
+        document.getElementById('force_update').addEventListener('click', function() {
+            ForceUpdateHeatMap();
+        });
+
     });
 </script>
 

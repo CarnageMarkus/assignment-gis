@@ -3,10 +3,16 @@ git_source(:github) { |repo| "https://github.com/#{repo}.git" }
 
 ruby '2.5.3'
 
+gem 'jquery-rails'
 gem 'rgeo'
 gem 'rgeo-geojson'
 gem 'json'
 gem 'activerecord-postgis-adapter'
+gem 'bootstrap',     '4.1.1'
+gem 'material-sass', '4.1.1'
+gem 'sun_calc', '~> 0.1.0'
+
+
 
 # Bundle edge Rails instead: gem 'rails', github: 'rails/rails'
 gem 'rails', '~> 5.2.1', '>= 5.2.1.1'

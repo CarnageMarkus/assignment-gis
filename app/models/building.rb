@@ -2,11 +2,12 @@ class Building < ApplicationRecord
   def build_geojson
     geojson=  '{
         "type": "Feature",
-        "geometry": '+RGeo::GeoJSON.encode(self.wkb_geometry).to_s.gsub('=>' , ':') +',
+        "geometry": '+RGeo::GeoJSON.encode(self.wkb_geometry).to_s.gsub('=>' , ':') + ',
         "properties": {
           "id": '+self.ogc_fid.to_json+',
-          "height": '+self.get_height(self.height, self.building_levels).to_s+',
-          "min_height":'+ self.get_height(self.min_height, self.building_min_level).to_s+'
+          "amenity": '+ (self.amenity ? self.amenity.to_json : '"unknown"') + ',
+          "height": '+self.get_height(self.height, self.building_levels).to_s + ',
+          "min_height":'+ self.get_height(self.min_height, self.building_min_level).to_s + '
         }
       }'
   end
