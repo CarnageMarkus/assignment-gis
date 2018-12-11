@@ -16,12 +16,10 @@ Build a map-based application, which lets the user see geo-based data on a map a
 
 - [Open Street Maps](https://www.openstreetmap.org/)
 
-## My project
+## My project - City viz.
 
-Fill in (either in English, or in Slovak):
+**Application description**: Application displays height heatmap of buildings in Manhattan. It is possible to view direction and area of incoming sunlight through whole day for every building displayed (separately). Incoming sunlight area represents possible angle at which sun hits the building from the moment sun rises over horizon till evening when it disappears again. Buildings intersecting with this area can also be highlighted. App also includes possibility to search for places of interest in specified range.
 
-**Application description**: `<fill in>`
+**Data source**: http://overpass-turbo.eu/  OSM building data for Manhattan.
 
-**Data source**: `<fill in>`
-
-**Technologies used**: `<fill in>`
+**Technologies used**: `Ruby on Rails, Postgis, Mapbox`
