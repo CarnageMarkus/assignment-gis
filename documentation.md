@@ -62,3 +62,117 @@ The building date is coming from [Overpass-Turbo](http://overpass-turbo.eu/), wh
 ### Response
 
 API calls return geojson feature collection responses with all additional data in `properties` as specified by geojson specification.
+
+**UC1: Heatmap camera update to get data for actual visible region by camera.**
+
+```
+- Plan: 
+    Node Type: "Gather"
+    Parallel Aware: false
+    Startup Cost: 1000.00
+    Total Cost: 12295.64
+    Plan Rows: 608
+    Plan Width: 500
+    Actual Startup Time: 2.090
+    Actual Total Time: 1099.535
+    Actual Rows: 41510
+    Actual Loops: 1
+    Workers Planned: 2
+    Workers Launched: 2
+    Single Copy: false
+    Plans: 
+      - Node Type: "Seq Scan"
+        Parent Relationship: "Outer"
+        Parallel Aware: true
+        Relation Name: "buildings"
+        Alias: "b"
+        Startup Cost: 0.00
+        Total Cost: 11234.84
+        Plan Rows: 253
+        Plan Width: 500
+        Actual Startup Time: 1.886
+        Actual Total Time: 1037.496
+        Actual Rows: 13837
+        Actual Loops: 3
+        Filter: "(((wkb_geometry)::geography && '0101000020E6100000C09074A8717F52C05CDF828DEA5E4440'::geography) AND ('0101000020E6100000C09074A8717F52C05CDF828DEA5E4440'::geography && _st_expand((wkb_geometry)::geography, '10000'::double precision)) AND _st_dwithin((wkb_geometry)::geography, '0101000020E6100000C09074A8717F52C05CDF828DEA5E4440'::geography, '10000'::double precision, false))"
+        Rows Removed by Filter: 1360
+  Planning Time: 0.254
+  Triggers: 
+  Execution Time: 1107.219
+```
+
+**UC2: Select buildings intersecting with "incoming sunlight" polygon**
+
+```
+- Plan: 
+    Node Type: "Gather"
+    Parallel Aware: false
+    Startup Cost: 1000.00
+    Total Cost: 10116.78
+    Plan Rows: 3039
+    Plan Width: 500
+    Actual Startup Time: 103.745
+    Actual Total Time: 196.140
+    Actual Rows: 43
+    Actual Loops: 1
+    Workers Planned: 2
+    Workers Launched: 2
+    Single Copy: false
+    Plans: 
+      - Node Type: "Seq Scan"
+        Parent Relationship: "Outer"
+        Parallel Aware: true
+        Relation Name: "buildings"
+        Alias: "b"
+        Startup Cost: 0.00
+        Total Cost: 8812.88
+        Plan Rows: 1266
+        Plan Width: 500
+        Actual Startup Time: 54.684
+        Actual Total Time: 146.023
+        Actual Rows: 14
+        Actual Loops: 3
+        Filter: "(((wkb_geometry)::geography && '0103000020E6100000010000000B000000627655218A7F52C0BC1B666998604440A781E58C637F52C0B4E902749F604440E40B1962637F52C00C2B22F39360444049ABAAFD647F52C03595CB1787604440D85155F2687F52C0D46518C779604440B9F738626F7F52C0073F58B46D604440B032BD9D777F52C06CE7B3A664604440C014846B807F52C042CB4B685F60444006A80CC2887F52C07EA991935D60444013A4A926907F52C032652C405E604440627655218A7F52C0BC1B666998604440'::geography) AND (_st_distance((wkb_geometry)::geography, '0103000020E6100000010000000B000000627655218A7F52C0BC1B666998604440A781E58C637F52C0B4E902749F604440E40B1962637F52C00C2B22F39360444049ABAAFD647F52C03595CB1787604440D85155F2687F52C0D46518C779604440B9F738626F7F52C0073F58B46D604440B032BD9D777F52C06CE7B3A664604440C014846B807F52C042CB4B685F60444006A80CC2887F52C07EA991935D60444013A4A926907F52C032652C405E604440627655218A7F52C0BC1B666998604440'::geography, '0'::double precision, false) < '1e-005'::double precision))"
+        Rows Removed by Filter: 15182
+  Planning Time: 4.956
+  Triggers: 
+  Execution Time: 202.732
+```
+
+**UC3: Display amenities surrounding selected building (position) under specified distance**
+
+```
+- Plan: 
+    Node Type: "Gather"
+    Parallel Aware: false
+    Startup Cost: 1000.00
+    Total Cost: 12282.43
+    Plan Rows: 1
+    Plan Width: 500
+    Actual Startup Time: 3.377
+    Actual Total Time: 95.601
+    Actual Rows: 4
+    Actual Loops: 1
+    Workers Planned: 2
+    Workers Launched: 2
+    Single Copy: false
+    Plans: 
+      - Node Type: "Seq Scan"
+        Parent Relationship: "Outer"
+        Parallel Aware: true
+        Relation Name: "buildings"
+        Alias: "b"
+        Startup Cost: 0.00
+        Total Cost: 11282.33
+        Plan Rows: 1
+        Plan Width: 500
+        Actual Startup Time: 0.816
+        Actual Total Time: 7.610
+        Actual Rows: 1
+        Actual Loops: 3
+        Filter: "(((amenity)::text = 'cinema'::text) AND ((wkb_geometry)::geography && '0101000020E6100000540E8F59F87E52C02C3F34AC64614440'::geography) AND ('0101000020E6100000540E8F59F87E52C02C3F34AC64614440'::geography && _st_expand((wkb_geometry)::geography, '7000'::double precision)) AND _st_dwithin((wkb_geometry)::geography, '0101000020E6100000540E8F59F87E52C02C3F34AC64614440'::geography, '7000'::double precision, false))"
+        Rows Removed by Filter: 15195
+  Planning Time: 0.190
+  Triggers: 
+  Execution Time: 101.060
+  ```
